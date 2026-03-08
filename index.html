@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>JUNGLE DASH — Endless Runner</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{overflow:hidden;background:#120800;font-family:'Georgia',serif;}
+canvas{display:block;}
+
+/* ── HUD ─────────────────────────────────────── */
+#hud{
+  position:fixed;top:0;left:0;width:100%;
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:16px 26px;pointer-events:none;z-index:10;
+}
+.hb{text-align:center;min-width:72px;}
+.hl{font-size:9px;letter-spacing:5px;color:rgba(255,200,80,.45);text-transform:uppercase;font-family:monospace;}
+.hv{font-size:28px;font-weight:bold;color:#ffe07a;text-shadow:0 0 12px rgba(255,150,0,.7);}
+#lives-row{display:flex;gap:5px;margin-top:3px;justify-content:center;}
+.heart{width:18px;height:17px;position:relative;}
+.heart::before,.heart::after{
+  content:'';position:absolute;width:9px;height:14px;
+  background:#ff3344;border-radius:9px 9px 0 0;transform-origin:bottom center;
+}
+.heart::before{left:0;transform:rotate(-45deg);}
+.heart::after{right:0;transform:rotate(45deg);}
+.heart.empty::before,.heart.empty::after{background:rgba(255,60,80,.15);}
+
+/* ── Speed bar ───────────────────────────────── */
+#sbar-wrap{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  width:160px;height:3px;background:rgba(255,255,255,.08);border-radius:2px;
+  pointer-events:none;z-index:10;
+}
+#sbar{height:100%;width:0;border-radius:2px;
+  background:linear-gradient(90deg,#ff8800,#ffe060);
+  box-shadow:0 0 6px rgba(255,180,0,.6);transition:width .25s;}
+
+/* ── Screens ─────────────────────────────────── */
+.screen{
+  position:fixed;inset:0;z-index:50;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(6,2,0,.9);
+  transition:opacity .45s;
+}
+.screen.hide{opacity:0;pointer-events:none;}
+
+.gt{
+  font-size:clamp(38px,7vw,82px);font-weight:900;letter-spacing:.1em;
+  color:#ffe07a;
+  text-shadow:0 0 40px rgba(255,140,0,.95),0 0 80px rgba(255,60,0,.5);
+  margin-bottom:5px;
+}
+.gs{font-size:11px;letter-spacing:8px;color:rgba(255,200,80,.35);margin-bottom:44px;}
+.btn{
+  font-family:'Georgia',serif;font-size:15px;letter-spacing:5px;
+  font-weight:bold;text-transform:uppercase;
+  color:#1a0400;background:#ffe07a;border:none;cursor:pointer;
+  padding:15px 52px;border-radius:3px;margin:6px;
+  box-shadow:0 0 22px rgba(255,170,0,.5);transition:all .18s;pointer-events:all;
+}
+.btn:hover{background:#fff;transform:scale(1.05);box-shadow:0 0 32px rgba(255,220,0,.8);}
+.hint{
+  margin-top:32px;font-family:monospace;font-size:10px;letter-spacing:4px;
+  line-height:2.4;color:rgba(255,200,80,.25);text-align:center;
+}
+
+#go-sc{font-size:56px;color:#ffe07a;text-shadow:0 0 18px rgba(255,160,0,.7);margin:10px 0 4px;}
+#go-best{font-family:monospace;font-size:11px;letter-spacing:5px;color:rgba(255,200,80,.38);margin-bottom:30px;}
+
+/* ── Milestone popup ─────────────────────────── */
+#mil{
+  position:fixed;left:50%;top:42%;transform:translateX(-50%);
+  font-size:30px;font-weight:bold;color:#ffe07a;
+  text-shadow:0 0 18px rgba(255,170,0,.9);
+  pointer-events:none;z-index:30;opacity:0;
+}
+#mil.pop{animation:milAnim 1.1s ease-out forwards;}
+@keyframes milAnim{
+  0%{opacity:1;transform:translateX(-50%) scale(.65);}
+  38%{opacity:1;transform:translateX(-50%) scale(1.18);}
+  100%{opacity:0;transform:translateX(-50%) translateY(-60px) scale(1);}
+}
+
+/* ── Coin pickup ─────────────────────────────── */
+.pu{
+  position:fixed;pointer-events:none;z-index:30;
+  font-family:'Georgia',serif;font-size:19px;color:#ffe07a;font-weight:bold;
+  animation:puAnim .7s ease-out forwards;
+}
+@keyframes puAnim{
+  0%{opacity:1;transform:translateY(0) scale(1);}
+  100%{opacity:0;transform:translateY(-52px) scale(1.1);}
+}
+
+/* ── Pause overlay ───────────────────────────── */
+#pause-hint{
+  position:fixed;top:16px;right:26px;z-index:10;
+  font-family:monospace;font-size:9px;letter-spacing:4px;
+  color:rgba(255,200,80,.18);pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hb"><div class="hl">Score</div><div class="hv" id="v-sc">0</div></div>
+  <div class="hb">
+    <div class="hl">Lives</div>
+    <div id="lives-row">
+      <div class="heart" id="h0"></div>
+      <div class="heart" id="h1"></div>
+      <div class="heart" id="h2"></div>
+    </div>
+  </div>
+  <div class="hb"><div class="hl">Coins</div><div class="hv" id="v-cn">0</div></div>
+</div>
+<div id="sbar-wrap"><div id="sbar"></div></div>
+<div id="pause-hint">ESC · PAUSE</div>
+<div id="mil"></div>
+
+<!-- Start screen -->
+<div class="screen" id="sc-start">
+  <div class="gt">JUNGLE DASH</div>
+  <div class="gs">ENDLESS RUNNER</div>
+  <button class="btn" id="btn-start">▶  RUN!</button>
+  <div class="hint">
+    ←  A  &nbsp;/&nbsp;  →  D  · CHANGE LANE<br>
+    ↑  W  SPACE · JUMP<br>
+    ↓  S · SLIDE / DUCK<br><br>
+    ◀ ▲ ▼ ▶ &nbsp; SWIPE ON MOBILE
+  </div>
+</div>
+
+<!-- Game Over -->
+<div class="screen hide" id="sc-over">
+  <div style="font-family:monospace;font-size:11px;letter-spacing:7px;color:rgba(255,80,60,.65);margin-bottom:6px;">GAME OVER</div>
+  <div class="gt" style="font-size:clamp(32px,5.5vw,66px)">JUNGLE DASH</div>
+  <div id="go-sc">0</div>
+  <div id="go-best">BEST: 0</div>
+  <button class="btn" id="btn-retry">↺  RETRY</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════
+   JUNGLE DASH  ·  Temple-Run style endless runner
+   Three.js r128  ·  Single HTML file
+ ═══════════════════════════════════════════════════ */
+
+// ── Constants ───────────────────────────────────────
+const LANE_X     = [-3.6, 0, 3.6];
+const TILE_LEN   = 24;
+const TILE_W     = 12.5;
+const N_TILES    = 16;
+const JUMP_FORCE = 15;
+const GRAVITY    = -38;
+const SLIDE_DUR  = 0.72;
+const BASE_SPEED = 17;
+const MAX_SPEED  = 46;
+const SPAWN_AHD  = 210;
+const OBS_MINGAP = 28;
+const OBS_MAXGAP = 55;
+const CAM_BACK   = 13;
+const CAM_UP     = 9.2;
+
+// ── Renderer ────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.FogExp2(0x4e2400, 0.009);
+
+const camera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 300);
+
+// ── Lights ──────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffaa55, 0.75));
+const sun = new THREE.DirectionalLight(0xffc870, 2.4);
+sun.position.set(25, 90, -50);
+sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left:-18, right:18, top:16, bottom:-16, far:130 });
+sun.shadow.mapSize.set(1024, 1024);
+scene.add(sun);
+const ptL = new THREE.PointLight(0xff8833, 3.5, 20);
+const ptR = new THREE.PointLight(0xff8833, 3.5, 20);
+scene.add(ptL, ptR);
+
+// ── Sky ─────────────────────────────────────────────
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(260, 14, 8),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {
+      uZen: { value: new THREE.Color(0x0b041a) },
+      uHor: { value: new THREE.Color(0x922e00) },
+    },
+    vertexShader: `varying float vy;
+      void main(){ vy=normalize(position).y;
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader: `uniform vec3 uZen,uHor; varying float vy;
+      void main(){
+        float t=clamp(vy*1.8,0.,1.);
+        gl_FragColor=vec4(mix(uHor,uZen,pow(t,.55)),1.);
+      }`,
+  })
+));
+
+// Distant glow disc (sun)
+const discMesh = new THREE.Mesh(
+  new THREE.CircleGeometry(22, 36),
+  new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.16 })
+);
+discMesh.position.set(0, 48, -240);
+scene.add(discMesh);
+
+// Mountain silhouettes
+(function(){
+  const verts = [];
+  for(let i=0;i<22;i++){
+    const x = (i/21-.5)*600;
+    const xn = (i+1)/21-.5;
+    const h = 18+Math.sin(i*1.3)*12+Math.cos(i*2.7)*8;
+    verts.push(x,-5,-220, x+27,-5,-220, (x+13.5),h,-220);
+  }
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  scene.add(new THREE.Mesh(bg, new THREE.MeshBasicMaterial({ color:0x0d0622, side:THREE.DoubleSide })));
+})();
+
+// ── Shared materials ────────────────────────────────
+const M = {
+  stone:  new THREE.MeshLambertMaterial({ color:0xa08060 }),
+  dark:   new THREE.MeshLambertMaterial({ color:0x5a3820 }),
+  wall:   new THREE.MeshLambertMaterial({ color:0x4a3018, emissive:0x080300 }),
+  hurdle: new THREE.MeshLambertMaterial({ color:0x9b7620, emissive:0x1a0e00 }),
+  fire:   new THREE.MeshBasicMaterial({ color:0xff7700 }),
+  fire2:  new THREE.MeshBasicMaterial({ color:0xff3300 }),
+  fire3:  new THREE.MeshBasicMaterial({ color:0xffcc00 }),
+  coin:   new THREE.MeshLambertMaterial({ color:0xffcc00, emissive:0x664400 }),
+  trunk:  new THREE.MeshLambertMaterial({ color:0x5a3214 }),
+  liana:  new THREE.MeshLambertMaterial({ color:0x2a5c10 }),
+  crystal:new THREE.MeshLambertMaterial({ color:0x7744dd, emissive:0x220044 }),
+};
+
+// ── Player character ────────────────────────────────
+const P = (function(){
+  const g = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1,1.45,.78),
+    new THREE.MeshLambertMaterial({color:0xcc3300,emissive:0x1a0400}));
+  body.position.y=1.72; body.castShadow=true; g.add(body);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(.9,.9,.9),
+    new THREE.MeshLambertMaterial({color:0xf0c080,emissive:0x0e0900}));
+  head.position.y=2.82; head.castShadow=true; g.add(head);
+
+  // Hat
+  const hatB = new THREE.Mesh(new THREE.BoxGeometry(1.22,.1,1.22),
+    new THREE.MeshLambertMaterial({color:0x5c3800}));
+  hatB.position.y=3.28; g.add(hatB);
+  const hatT = new THREE.Mesh(new THREE.BoxGeometry(.76,.56,.76),
+    new THREE.MeshLambertMaterial({color:0x5c3800}));
+  hatT.position.y=3.59; g.add(hatT);
+  // Hat band
+  const band = new THREE.Mesh(new THREE.BoxGeometry(.78,.1,.78),
+    new THREE.MeshLambertMaterial({color:0xdd9900,emissive:0x441100}));
+  band.position.y=3.3; g.add(band);
+
+  // Backpack
+  const pack = new THREE.Mesh(new THREE.BoxGeometry(.62,.82,.3),
+    new THREE.MeshLambertMaterial({color:0x3c5c20,emissive:0x040800}));
+  pack.position.set(0,1.75,.52); g.add(pack);
+
+  // Belt
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(1.14,.18,.8),
+    new THREE.MeshLambertMaterial({color:0x9b6c20,emissive:0x100400}));
+  belt.position.y=1.08; g.add(belt);
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(.22,.22,.1),
+    new THREE.MeshLambertMaterial({color:0xddbb44,emissive:0x443300}));
+  buckle.position.set(0,1.08,.42); g.add(buckle);
+
+  const legG = new THREE.BoxGeometry(.44,1.0,.48);
+  const legM = new THREE.MeshLambertMaterial({color:0x334499,emissive:0x03040e});
+  const legL = new THREE.Mesh(legG,legM); legL.position.set(-.3,.6,0); legL.castShadow=true; g.add(legL);
+  const legR = new THREE.Mesh(legG,legM); legR.position.set(.3,.6,0);  legR.castShadow=true; g.add(legR);
+
+  // Boots
+  const bootG = new THREE.BoxGeometry(.48,.32,.56);
+  const bootM = new THREE.MeshLambertMaterial({color:0x5c3814,emissive:0x0a0400});
+  const bootL = new THREE.Mesh(bootG,bootM); bootL.position.set(-.3,.08,.04); g.add(bootL);
+  const bootR = new THREE.Mesh(bootG,bootM); bootR.position.set(.3,.08,.04);  g.add(bootR);
+
+  const armG = new THREE.BoxGeometry(.32,.9,.38);
+  const armM = new THREE.MeshLambertMaterial({color:0xcc3300,emissive:0x0e0200});
+  const armL = new THREE.Mesh(armG,armM); armL.position.set(-.73,1.66,0); armL.castShadow=true; g.add(armL);
+  const armR = new THREE.Mesh(armG,armM); armR.position.set(.73,1.66,0);  armR.castShadow=true; g.add(armR);
+
+  return { group:g, body, head, legL, legR, armL, armR, bootL, bootR };
+}());
+scene.add(P.group);
+
+// ── Tile factory ────────────────────────────────────
+const FOLIAGE_COLORS = [
+  new THREE.MeshLambertMaterial({color:0x1a6010}),
+  new THREE.MeshLambertMaterial({color:0x1e7018}),
+  new THREE.MeshLambertMaterial({color:0x256020}),
+  new THREE.MeshLambertMaterial({color:0x1a5c30}),
+];
+
+function mkTile() {
+  const g = new THREE.Group();
+
+  // Floor slab
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(TILE_W,.72,TILE_LEN), M.stone);
+  floor.position.y=-.36; floor.receiveShadow=true; g.add(floor);
+
+  // Stone edge trim
+  for(const s of [-1,1]) {
+    const e = new THREE.Mesh(new THREE.BoxGeometry(.6,.9,TILE_LEN), M.dark);
+    e.position.set(s*(TILE_W/2-.3),.1,0); g.add(e);
+  }
+
+  // Lane dividers (carved grooves)
+  for(const lx of [-LANE_X[1]+.1, LANE_X[1]-.1]) {
+    const div = new THREE.Mesh(new THREE.BoxGeometry(.1,.05,TILE_LEN),
+      new THREE.MeshBasicMaterial({color:0x705040,transparent:true,opacity:.45}));
+    div.position.set(lx,.02,0); g.add(div);
+  }
+
+  // Moss patches on floor
+  for(let i=0;i<6;i++){
+    const mx = (Math.random()-.5)*10;
+    const mz = (Math.random()-.5)*(TILE_LEN-2);
+    const moss = new THREE.Mesh(new THREE.BoxGeometry(.8+Math.random()*.8,.04,.6+Math.random()*.6),
+      new THREE.MeshLambertMaterial({color:0x2a5a14,transparent:true,opacity:.6}));
+    moss.position.set(mx,.02,mz); g.add(moss);
+  }
+
+  // Side jungle: trees + pillars
+  for(let zi=-TILE_LEN/2+3; zi<TILE_LEN/2-2; zi+=5+Math.random()*5){
+    for(const s of [-1,1]){
+      const bx = s*(TILE_W/2+1.4+Math.random()*4.5);
+      // Tree
+      if(Math.random()>.38){
+        const th=5+Math.random()*9;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.2,.32,th,6), M.trunk);
+        trunk.position.set(bx,th/2,zi); g.add(trunk);
+        const fm = FOLIAGE_COLORS[Math.floor(Math.random()*FOLIAGE_COLORS.length)];
+        const fr = 1.2+Math.random()*1.5;
+        const foliage = new THREE.Mesh(new THREE.SphereGeometry(fr,7,5), fm);
+        foliage.position.set(bx,th+.6,zi); g.add(foliage);
+        // Second canopy
+        if(Math.random()>.55){
+          const f2 = new THREE.Mesh(new THREE.SphereGeometry(fr*.72,6,4), fm);
+          f2.position.set(bx+s*.8,th-.6,zi+Math.random()-.5); g.add(f2);
+        }
+      }
+      // Stone ruin pillar
+      if(Math.random()>.55){
+        const ph=1.5+Math.random()*3;
+        const pil = new THREE.Mesh(new THREE.BoxGeometry(.8,ph,.8), M.dark);
+        pil.position.set(s*(TILE_W/2+.55),ph/2,zi-1.5);
+        pil.castShadow=true; g.add(pil);
+        // Torch
+        if(Math.random()>.5){
+          const fl = new THREE.Mesh(new THREE.ConeGeometry(.2,.44,6), M.fire);
+          fl.position.set(s*(TILE_W/2+.55),ph+.32,zi-1.5); g.add(fl);
+        }
+      }
+    }
+  }
+
+  // Vines hanging from ceiling occasionally (decorative)
+  for(let i=0;i<3;i++){
+    const vz = (Math.random()-.5)*TILE_LEN;
+    const vx = (Math.random()-.5)*11;
+    const vl = 1+Math.random()*2.5;
+    const vine = new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,vl,5), M.liana);
+    vine.position.set(vx,vl/2+4.5,vz); g.add(vine);
+  }
+
+  scene.add(g);
+  return g;
+}
+
+// Init tile pool
+const tiles = [];
+let tileHead = 0;
+function initTiles(){
+  tiles.forEach(t=>scene.remove(t)); tiles.length=0;
+  tileHead=0;
+  for(let i=0;i<N_TILES;i++){
+    const t=mkTile();
+    t.position.z=tileHead+TILE_LEN/2;
+    tileHead+=TILE_LEN;
+    tiles.push(t);
+  }
+}
+
+// ── Obstacle factory ────────────────────────────────
+// hitType: 'wall'|'hurdle'|'arch'
+// openLanes: array of safe lane indices (for wall type)
+function mkObstacle(type){
+  const g = new THREE.Group();
+  let hitType, openLanes;
+
+  if(type==='wall_l'){
+    // Blocks lane 0+1, lane 2 open (right)
+    const w=new THREE.Mesh(new THREE.BoxGeometry(7.4,4.4,1.3),M.wall);
+    w.position.set(-1.8,2.2,0); w.castShadow=true; g.add(w);
+    const cap=new THREE.Mesh(new THREE.BoxGeometry(7.7,.5,1.7),M.dark);
+    cap.position.set(-1.8,4.65,0); g.add(cap);
+    // Carved face / runes detail
+    for(let k=0;k<3;k++){
+      const rune=new THREE.Mesh(new THREE.BoxGeometry(.3,.5,.1),
+        new THREE.MeshLambertMaterial({color:0x7a5c30,emissive:0x0e0800}));
+      rune.position.set(-3.5+k*1.8,2.5,.72); g.add(rune);
+    }
+    hitType='wall'; openLanes=[2];
+  }
+  else if(type==='wall_r'){
+    // Blocks lane 1+2, lane 0 open (left)
+    const w=new THREE.Mesh(new THREE.BoxGeometry(7.4,4.4,1.3),M.wall);
+    w.position.set(1.8,2.2,0); w.castShadow=true; g.add(w);
+    const cap=new THREE.Mesh(new THREE.BoxGeometry(7.7,.5,1.7),M.dark);
+    cap.position.set(1.8,4.65,0); g.add(cap);
+    for(let k=0;k<3;k++){
+      const rune=new THREE.Mesh(new THREE.BoxGeometry(.3,.5,.1),
+        new THREE.MeshLambertMaterial({color:0x7a5c30,emissive:0x0e0800}));
+      rune.position.set(.2+k*1.8,2.5,.72); g.add(rune);
+    }
+    hitType='wall'; openLanes=[0];
+  }
+  else if(type==='wall_c'){
+    // Blocks only center lane 1, left+right open
+    const w=new THREE.Mesh(new THREE.BoxGeometry(4.0,4.4,1.3),M.wall);
+    w.position.set(0,2.2,0); w.castShadow=true; g.add(w);
+    const cap=new THREE.Mesh(new THREE.BoxGeometry(4.3,.5,1.7),M.dark);
+    cap.position.set(0,4.65,0); g.add(cap);
+    // Moss vines on wall
+    for(let k=0;k<5;k++){
+      const v=new THREE.Mesh(new THREE.BoxGeometry(.12,.9+Math.random(),.1),M.liana);
+      v.position.set((Math.random()-.5)*3.2,1+Math.random()*2.8,.72); g.add(v);
+    }
+    hitType='wall'; openLanes=[0,2];
+  }
+  else if(type==='hurdle'){
+    // Low bar across all 3 lanes — must JUMP
+    const bar=new THREE.Mesh(new THREE.BoxGeometry(TILE_W-.8,1.35,.85),M.hurdle);
+    bar.position.y=.68; bar.castShadow=true; g.add(bar);
+    for(const px of [-4.6,-2.3,0,2.3,4.6]){
+      const post=new THREE.Mesh(new THREE.BoxGeometry(.28,1.55,.28),M.dark);
+      post.position.set(px,.78,0); g.add(post);
+    }
+    // Glow trim top
+    const glow=new THREE.Mesh(new THREE.BoxGeometry(TILE_W-.8,.14,.9),
+      new THREE.MeshBasicMaterial({color:0xffaa00,transparent:true,opacity:.62}));
+    glow.position.y=1.3; g.add(glow);
+    // Skulls decorating the bar
+    for(const px of [-3,0,3]){
+      const sk=new THREE.Mesh(new THREE.BoxGeometry(.36,.36,.36),
+        new THREE.MeshLambertMaterial({color:0xeeddcc,emissive:0x100800}));
+      sk.position.set(px,1.4,0); g.add(sk);
+    }
+    hitType='hurdle'; openLanes=[0,1,2];
+  }
+  else if(type==='arch'){
+    // Stone archway with low clearance — must SLIDE
+    const pilL=new THREE.Mesh(new THREE.BoxGeometry(1.9,2.9,1.4),M.dark);
+    pilL.position.set(-5.2,1.45,0); pilL.castShadow=true; g.add(pilL);
+    const pilR=new THREE.Mesh(new THREE.BoxGeometry(1.9,2.9,1.4),M.dark);
+    pilR.position.set(5.2,1.45,0);  pilR.castShadow=true; g.add(pilR);
+    const cross=new THREE.Mesh(new THREE.BoxGeometry(TILE_W+.5,1.35,1.4),M.dark);
+    cross.position.y=3.1; cross.castShadow=true; g.add(cross);
+    // Arch carving details
+    for(const s of [-1,1]){
+      const d=new THREE.Mesh(new THREE.BoxGeometry(1.1,.8,.1),
+        new THREE.MeshLambertMaterial({color:0x7a5c30,emissive:0x0a0600}));
+      d.position.set(s*5.2,1.9,-0.78); g.add(d);
+    }
+    // Warning glow at arch top
+    const gwarn=new THREE.Mesh(new THREE.BoxGeometry(TILE_W-3.8,.12,.35),
+      new THREE.MeshBasicMaterial({color:0xff6600,transparent:true,opacity:.5}));
+    gwarn.position.y=2.45; g.add(gwarn);
+    hitType='arch'; openLanes=[0,1,2];
+  }
+  else if(type==='fire_l'){
+    // Fire columns blocking lanes 0+1
+    for(const px of [-3.6,0]){
+      const base=new THREE.Mesh(new THREE.CylinderGeometry(.55,.7,1.3,8),M.dark);
+      base.position.set(px,.65,0); base.castShadow=true; g.add(base);
+      const fireMs=[M.fire,M.fire2,M.fire3,M.fire];
+      for(let k=0;k<5;k++){
+        const fl=new THREE.Mesh(new THREE.ConeGeometry(.32-k*.04,.88,7),
+          fireMs[k%4]);
+        fl.position.set(px+(Math.random()-.5)*.28,1.55+k*.58,0); g.add(fl);
+      }
+      // Ember glow ring
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(.5,.08,6,12),
+        new THREE.MeshBasicMaterial({color:0xff8800,transparent:true,opacity:.55}));
+      ring.position.set(px,1.3,0); ring.rotation.x=Math.PI/2; g.add(ring);
+    }
+    hitType='wall'; openLanes=[2];
+  }
+  else if(type==='fire_r'){
+    // Fire columns blocking lanes 1+2
+    for(const px of [3.6,0]){
+      const base=new THREE.Mesh(new THREE.CylinderGeometry(.55,.7,1.3,8),M.dark);
+      base.position.set(px,.65,0); base.castShadow=true; g.add(base);
+      const fireMs=[M.fire,M.fire2,M.fire3,M.fire];
+      for(let k=0;k<5;k++){
+        const fl=new THREE.Mesh(new THREE.ConeGeometry(.32-k*.04,.88,7),
+          fireMs[k%4]);
+        fl.position.set(px+(Math.random()-.5)*.28,1.55+k*.58,0); g.add(fl);
+      }
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(.5,.08,6,12),
+        new THREE.MeshBasicMaterial({color:0xff8800,transparent:true,opacity:.55}));
+      ring.position.set(px,1.3,0); ring.rotation.x=Math.PI/2; g.add(ring);
+    }
+    hitType='wall'; openLanes=[0];
+  }
+  else if(type==='crystals'){
+    // Crystal spires blocking left or right lane
+    const side = Math.random()>.5 ? 1 : -1;
+    const blockedLane = side > 0 ? 2 : 0;
+    for(let k=0;k<3;k++){
+      const h=2+Math.random()*2.5;
+      const cx=side*(1.8+k*.9);
+      const cr=new THREE.Mesh(
+        new THREE.ConeGeometry(.28+Math.random()*.2,h,5),M.crystal);
+      cr.position.set(cx,h/2,0); cr.rotation.z=(Math.random()-.5)*.3;
+      g.add(cr);
+    }
+    hitType='wall'; openLanes = side>0 ? [0,1] : [1,2];
+  }
+
+  return { group:g, hitType, openLanes };
+}
+
+const OBS_POOL = ['wall_l','wall_r','wall_c','hurdle','arch','fire_l','fire_r','crystals'];
+const obstacles = [];
+function spawnObs(z){
+  const type = OBS_POOL[Math.floor(Math.random()*OBS_POOL.length)];
+  const built = mkObstacle(type);
+  built.group.position.z = z;
+  scene.add(built.group);
+  obstacles.push({ ...built, z });
+}
+
+// ── Coin factory ────────────────────────────────────
+const COIN_GEO = new THREE.CylinderGeometry(.42,.42,.13,10);
+const coins = [];
+
+function spawnCoinRow(z, lane){
+  const n = 5+Math.floor(Math.random()*5);
+  for(let i=0;i<n;i++){
+    const c = new THREE.Mesh(COIN_GEO, M.coin);
+    c.rotation.x = Math.PI/2;
+    c.position.set(LANE_X[lane], 1.45, z-i*2.3);
+    scene.add(c);
+    coins.push({ mesh:c, z:z-i*2.3 });
+  }
+}
+function spawnCoinArc(z){
+  const lane = Math.floor(Math.random()*3);
+  for(let i=0;i<9;i++){
+    const c = new THREE.Mesh(COIN_GEO, M.coin);
+    c.rotation.x = Math.PI/2;
+    c.position.set(LANE_X[lane], 1.45+Math.sin(i/8*Math.PI)*5, z-i*2.0);
+    scene.add(c);
+    coins.push({ mesh:c, z:z-i*2.0 });
+  }
+}
+
+// ── Game state ──────────────────────────────────────
+let gState  = 'menu';   // menu | playing | dead
+let pLane   = 1;
+let pX      = LANE_X[1];
+let pY      = 0;
+let pVY     = 0;
+let jumping = false;
+let sliding = false;
+let slideT  = 0;
+let speed   = BASE_SPEED;
+let score   = 0;
+let coinCnt = 0;
+let lives   = 3;
+let dist    = 0;
+let bestSc  = 0;
+let grace   = 0;   // invincibility timer
+let shake   = 0;
+let nextObs = 0;
+let lastMil = 0;
+let bob     = 0;
+let camX=0, camY=CAM_UP, camZ=0;
+let paused  = false;
+
+// ── Input ────────────────────────────────────────────
+const KEY={};
+document.addEventListener('keydown', e=>{
+  if(KEY[e.code]) return;
+  KEY[e.code]=true;
+  if(e.code==='Escape'){ paused=!paused; return; }
+  if(gState!=='playing' || paused) return;
+  if(['ArrowLeft','KeyA'].includes(e.code))  doAct('left');
+  if(['ArrowRight','KeyD'].includes(e.code)) doAct('right');
+  if(['ArrowUp','KeyW','Space'].includes(e.code)) doAct('jump');
+  if(['ArrowDown','KeyS'].includes(e.code)) doAct('slide');
+  if(e.code!=='F5') e.preventDefault();
+});
+document.addEventListener('keyup', e=>{ KEY[e.code]=false; });
+
+let tSX=0, tSY=0;
+document.addEventListener('touchstart', e=>{
+  tSX=e.touches[0].clientX; tSY=e.touches[0].clientY;
+},{ passive:true });
+document.addEventListener('touchend', e=>{
+  if(gState!=='playing'||paused) return;
+  const dx=e.changedTouches[0].clientX-tSX;
+  const dy=e.changedTouches[0].clientY-tSY;
+  if(Math.max(Math.abs(dx),Math.abs(dy))<12) return;
+  if(Math.abs(dx)>Math.abs(dy)) doAct(dx<0?'left':'right');
+  else                           doAct(dy<0?'jump':'slide');
+},{ passive:true });
+
+function doAct(a){
+  if(a==='left'  && pLane>0) pLane--;
+  if(a==='right' && pLane<2) pLane++;
+  if(a==='jump'  && !jumping){ pVY=JUMP_FORCE; jumping=true; sliding=false; }
+  if(a==='slide' && !jumping){ sliding=true; slideT=SLIDE_DUR; }
+}
+
+// ── Game lifecycle ───────────────────────────────────
+function startGame(){
+  gState='playing'; paused=false;
+  pLane=1; pX=LANE_X[1]; pY=0; pVY=0;
+  jumping=false; sliding=false; slideT=0;
+  speed=BASE_SPEED; score=0; coinCnt=0; lives=3; dist=0;
+  grace=0; shake=0; bob=0; lastMil=0;
+  camX=0; camY=CAM_UP; camZ=-CAM_BACK;
+
+  P.group.position.set(LANE_X[1],0,0);
+  P.group.scale.set(1,1,1);
+  P.group.visible=true;
+
+  obstacles.forEach(o=>scene.remove(o.group)); obstacles.length=0;
+  coins.forEach(c=>scene.remove(c.mesh)); coins.length=0;
+  initTiles();
+
+  nextObs=TILE_LEN*5;
+
+  updateHUD();
+  updLives();
+
+  document.getElementById('sc-start').classList.add('hide');
+  document.getElementById('sc-over').classList.add('hide');
+}
+
+function doDie(){
+  gState='dead';
+  P.group.visible=false;
+  if(score>bestSc) bestSc=score;
+  setTimeout(()=>{
+    document.getElementById('go-sc').textContent=Math.floor(score);
+    document.getElementById('go-best').textContent='BEST: '+Math.floor(bestSc);
+    document.getElementById('sc-over').classList.remove('hide');
+  },1100);
+}
+
+function doHit(){
+  if(grace>0) return;
+  lives--;
+  updLives();
+  if(lives<=0){ doDie(); return; }
+  grace=2.0;
+  shake=0.4;
+}
+
+// ── HUD helpers ──────────────────────────────────────
+function updateHUD(){
+  document.getElementById('v-sc').textContent  = Math.floor(score);
+  document.getElementById('v-cn').textContent  = coinCnt;
+  document.getElementById('sbar').style.width  = ((speed-BASE_SPEED)/(MAX_SPEED-BASE_SPEED)*100).toFixed(1)+'%';
+}
+function updLives(){
+  for(let i=0;i<3;i++)
+    document.getElementById('h'+i).className='heart'+(i>=lives?' empty':'');
+}
+function chkMil(){
+  const m=Math.floor(dist/150);
+  if(m>lastMil){ lastMil=m;
+    const el=document.getElementById('mil');
+    el.textContent=(m*150)+'m!';
+    el.className='';
+    void el.offsetWidth;
+    el.className='pop';
+  }
+}
+function addPU(){
+  const el=document.createElement('div');
+  el.className='pu'; el.textContent='+10';
+  el.style.left=(30+Math.random()*36)+'%';
+  el.style.top =(36+Math.random()*26)+'%';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),720);
+}
+
+// ── Animate flames (flicker) ─────────────────────────
+let flameTick=0;
+function animFlames(dt){
+  flameTick+=dt;
+  obstacles.forEach(o=>{
+    o.group.children.forEach(child=>{
+      if(child.geometry && child.geometry.type==='ConeGeometry' &&
+         child.material===M.fire||child.material===M.fire2||child.material===M.fire3){
+        child.scale.y = .85+Math.sin(flameTick*14+child.id*.5)*.2;
+        child.scale.x = child.scale.z = .88+Math.cos(flameTick*11+child.id)*.15;
+      }
+    });
+  });
+}
+
+// ── Main loop ─────────────────────────────────────────
+let prevT=0;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-prevT)/1000,.055);
+  prevT=now;
+
+  if(gState!=='playing'||paused){
+    renderer.render(scene,camera);
+    return;
+  }
+
+  // Speed
+  speed=Math.min(BASE_SPEED+dist*.018, MAX_SPEED);
+
+  // Advance
+  const dz=speed*dt;
+  P.group.position.z+=dz;
+  dist+=dz;
+  score+=dz*1.6;
+
+  // Smooth lane switch
+  pX+=(LANE_X[pLane]-pX)*(1-Math.pow(.001,dt*13));
+  P.group.position.x=pX;
+
+  // Vertical physics
+  if(jumping||pY>0){
+    pVY+=GRAVITY*dt;
+    pY +=pVY*dt;
+    if(pY<=0){ pY=0; pVY=0; jumping=false; }
+  }
+  P.group.position.y=pY;
+
+  // Slide timer
+  if(sliding){ slideT-=dt; if(slideT<=0){ sliding=false; slideT=0; } }
+
+  // ── Character animation ──
+  bob+=dt*7.5*Math.min(speed/BASE_SPEED,2.3);
+  const bv=Math.sin(bob);
+
+  if(!sliding&&!jumping){
+    P.group.scale.set(1,1,1);
+    P.group.position.y=pY+Math.abs(bv)*.09;
+    P.legL.rotation.x  =  bv*.55;
+    P.legR.rotation.x  = -bv*.55;
+    P.armL.rotation.x  = -bv*.44;
+    P.armR.rotation.x  =  bv*.44;
+    P.armL.rotation.z  =  .25+bv*.12;
+    P.armR.rotation.z  = -.25-bv*.12;
+    P.body.rotation.z  =  bv*.04;
+  } else if(sliding){
+    P.group.scale.y=0.50;
+    P.group.position.y=pY-.46;
+    P.legL.rotation.x=P.legR.rotation.x=.45;
+    P.armL.rotation.x=P.armR.rotation.x=.7;
+    P.armL.rotation.z= .15;
+    P.armR.rotation.z=-.15;
+    P.body.rotation.z=0;
+  } else { // jumping
+    P.group.scale.set(1,1,1);
+    P.legL.rotation.x=P.legR.rotation.x=-.38;
+    P.armL.rotation.x=P.armR.rotation.x=-.6;
+    P.armL.rotation.z= .35;
+    P.armR.rotation.z=-.35;
+    P.body.rotation.z=0;
+  }
+
+  // Flash when invincible
+  if(grace>0){
+    grace-=dt;
+    P.group.visible=Math.floor(grace*9)%2===0;
+    if(grace<=0){ grace=0; P.group.visible=true; }
+  }
+
+  // Moving lights
+  ptL.position.set(pX-5.5,3,P.group.position.z+2);
+  ptR.position.set(pX+5.5,3,P.group.position.z+2);
+
+  // Tile recycling
+  const pz=P.group.position.z;
+  tiles.forEach(t=>{
+    if(t.position.z<pz-TILE_LEN*2.5) t.position.z+=TILE_LEN*N_TILES;
+  });
+
+  // Spawn obstacles and coins
+  while(nextObs<pz+SPAWN_AHD){
+    spawnObs(nextObs);
+    const cl=Math.floor(Math.random()*3);
+    if(Math.random()<.65) spawnCoinRow(nextObs-12, cl);
+    else spawnCoinArc(nextObs-16);
+    nextObs+=OBS_MINGAP+Math.random()*(OBS_MAXGAP-OBS_MINGAP);
+  }
+
+  // Remove stale obstacles
+  for(let i=obstacles.length-1;i>=0;i--){
+    if(obstacles[i].z<pz-28){
+      scene.remove(obstacles[i].group);
+      obstacles.splice(i,1);
+    }
+  }
+
+  // Animate coins (spin) & remove stale
+  for(let i=coins.length-1;i>=0;i--){
+    const c=coins[i];
+    if(!c.mesh.visible||c.z<pz-22){
+      scene.remove(c.mesh); coins.splice(i,1); continue;
+    }
+    c.mesh.rotation.z+=dt*2.9;
+    // Gentle bob
+    c.mesh.position.y=1.45+Math.sin(now*.002+c.z*.4)*.2;
+  }
+
+  animFlames(dt);
+
+  // ── Collision detection ──────────────────────────
+  if(grace<=0){
+    for(const obs of obstacles){
+      const dz=obs.group.position.z-pz;
+      if(Math.abs(dz)>4.5) continue;
+
+      if(obs.hitType==='wall'){
+        if(!obs.openLanes.includes(pLane)&&Math.abs(dz)<2.5){
+          doHit(); break;
+        }
+      } else if(obs.hitType==='hurdle'){
+        if(pY<1.55&&Math.abs(dz)<1.7){ doHit(); break; }
+      } else if(obs.hitType==='arch'){
+        if(!sliding&&Math.abs(dz)<1.9){ doHit(); break; }
+      }
+    }
+
+    // Coin pickup
+    for(const c of coins){
+      if(!c.mesh.visible) continue;
+      const cdz=c.mesh.position.z-pz;
+      if(Math.abs(cdz)>1.9) continue;
+      const cdx=c.mesh.position.x-pX;
+      const cdy=c.mesh.position.y-(pY+1.5);
+      if(Math.abs(cdx)<1.65&&Math.abs(cdy)<1.8){
+        c.mesh.visible=false;
+        coinCnt++; score+=10;
+        addPU();
+      }
+    }
+  }
+
+  // ── Camera smooth follow ──────────────────────────
+  const tcX=pX*.22;
+  const tcY=CAM_UP+(jumping?2.2:0);
+  const tcZ=pz-CAM_BACK;
+  camX+=(tcX-camX)*.11;
+  camY+=(tcY-camY)*.09;
+  camZ+=(tcZ-camZ)*.11;
+  camera.position.set(camX,camY,camZ);
+  camera.lookAt(pX*.15, pY+2, pz+20);
+
+  if(shake>0){
+    camera.position.x+=(Math.random()-.5)*shake;
+    camera.position.y+=(Math.random()-.5)*shake;
+    shake*=.8; if(shake<.01) shake=0;
+  }
+
+  updateHUD();
+  chkMil();
+  renderer.render(scene,camera);
+}
+
+// ── Buttons ──────────────────────────────────────────
+document.getElementById('btn-start').onclick  = startGame;
+document.getElementById('btn-retry').onclick  = startGame;
+
+// ── Resize ───────────────────────────────────────────
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ── Kick off render loop ─────────────────────────────
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
