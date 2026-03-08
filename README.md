@@ -16,7 +16,7 @@ Gameplay systems:<br>
 🌄 Milestone popup every 150m<br>
 💀 Game over screen with best score tracking<br>
 <br>
-8 obstacle types:
+8 obstacle types:<br>
 <br>
 Wall Left / Right — block 2 lanes, dodge to open lane<br>
 Wall Center — blocks middle only, go left or right<br>
