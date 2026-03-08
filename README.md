@@ -1,4 +1,4 @@
-<b><h1>JUNGLE DASH </h1><b>— open in any browser and hit RUN! 🎮<br>
+<b><h1>JUNGLE DASH </h1><b> open in any browser and hit RUN! 🎮<br>
 Here's what's in the game:<br><br>
 Controls:<br>
 <br>
